@@ -94,7 +94,7 @@ p <- ggplot(df, aes(x = log2FC, y = neglog10p)) +
   ) +
   scale_x_continuous(limits = c(-8, 8), breaks = seq(-8, 8, 2)) +
   labs(
-    title = "EPI300 pCC1-ATF1 Metabolome Response\n(no_arabinose vs arabinose and iAAL)",
+    title = "EPI300 pCC1-ATF1 Volatilome Response\n(no_arabinose vs arabinose and iAAL)",
     x = expression(log[2]~fold~change),
     y = expression(-log[10]~p~value~"(pseudo-log scale)")
   ) +
