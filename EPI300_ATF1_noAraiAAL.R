@@ -94,7 +94,7 @@ p <- ggplot(df, aes(x = log2FC, y = neglog10p)) +
     breaks = c(0, 2, 10, 100, 1000, 10000, 100000, 1000000)
   ) +
   labs(
-    title = "EPI300 pCC1-ATF1 Metabolome Response\n(iAAL vs noAra)",
+    title = "EPI300 pCC1-ATF1 Volatilome Response\n(no_arabinose vs iAAl)",
     x = expression(log[2]~fold~change),
     y = expression(-log[10]~p~value~"(pseudo-log scale)")
   ) +
@@ -107,4 +107,4 @@ p <- ggplot(df, aes(x = log2FC, y = neglog10p)) +
 
 print(p)
 
-ggsave("EPI300_ATF1_iAAL_volcano.png", p, width = 10, height = 8, dpi = 300)
+ggsave("EPI300_ATF1_noAraiAAL.png", p, width = 10, height = 8, dpi = 300)
