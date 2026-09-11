@@ -1,6 +1,6 @@
 # ============================================================
 # Volcano plot: EPI300_pCC1_ATF1
-# iAAL vs noAra
+# Ara_iAAL vs Ara
 # ============================================================
 
 library(tidyverse)
@@ -9,7 +9,7 @@ library(scales)
 
 # ---- 1. Load data ------------------------------------------------
 
-df <- read_csv("EPI300_pCC1_ATF1_noAraiAAlCla.csv",
+df <- read_csv("EPI300_pCC1_ATF1_AraAraiAAlCla.csv",
                show_col_types = FALSE)
 
 # Force the count columns to numeric. A stray non-numeric entry
@@ -20,35 +20,35 @@ df <- read_csv("EPI300_pCC1_ATF1_noAraiAAlCla.csv",
 # reported and dropped in the next step.
 df <- df %>%
   mutate(
-    EPI300_pCC1_ATF1_noAra      = suppressWarnings(as.numeric(EPI300_pCC1_ATF1_noAra)),
-    EPI300_pCC1_ATF1_iAAL = suppressWarnings(as.numeric(EPI300_pCC1_ATF1_iAAL))
+    EPI300_pCC1_ATF1_Ara      = suppressWarnings(as.numeric(EPI300_pCC1_ATF1_Ara)),
+    EPI300_pCC1_ATF1_Ara_iAAL = suppressWarnings(as.numeric(EPI300_pCC1_ATF1_Ara_iAAL))
   )
 
 dropped <- df %>%
-  filter(is.na(EPI300_pCC1_ATF1_noAra) | is.na(EPI300_pCC1_ATF1_iAAL))
+  filter(is.na(EPI300_pCC1_ATF1_Ara) | is.na(EPI300_pCC1_ATF1_Ara_iAAL))
 
 if (nrow(dropped) > 0) {
   message(sprintf("Dropping %d row(s) with missing/non-numeric values:", nrow(dropped)))
-  print(dropped %>% select(Name, EPI300_pCC1_ATF1_noAra, EPI300_pCC1_ATF1_iAAL),
+  print(dropped %>% select(Name, EPI300_pCC1_ATF1_Ara, EPI300_pCC1_ATF1_Ara_iAAL),
         n = nrow(dropped))
 }
 
 df <- df %>%
   filter(
-    !is.na(EPI300_pCC1_ATF1_noAra),
-    !is.na(EPI300_pCC1_ATF1_iAAL)
+    !is.na(EPI300_pCC1_ATF1_Ara),
+    !is.na(EPI300_pCC1_ATF1_Ara_iAAL)
   )
 
 # ---- 2. Fold Change ---------------------------------------------
 
-total_noAra <- sum(df$EPI300_pCC1_ATF1_noAra)
-total_iAAL <- sum(df$EPI300_pCC1_ATF1_iAAL)
+total_Ara <- sum(df$EPI300_pCC1_ATF1_Ara)
+total_iAAL <- sum(df$EPI300_pCC1_ATF1_Ara_iAAL)
 
 df <- df %>%
   mutate(
-    prop_noAra  = EPI300_pCC1_ATF1_noAra / total_noAra,
-    prop_iAAL = EPI300_pCC1_ATF1_iAAL / total_iAAL,
-    log2FC    = log2(prop_iAAL / prop_noAra)
+    prop_Ara  = EPI300_pCC1_ATF1_Ara / total_Ara,
+    prop_iAAL = EPI300_pCC1_ATF1_Ara_iAAL / total_iAAL,
+    log2FC    = log2(prop_iAAL / prop_Ara)
   )
 
 # ---- 3. Significance --------------------------------------------
@@ -57,17 +57,17 @@ df <- df %>%
   rowwise() %>%
   mutate(
     p_pool =
-      (EPI300_pCC1_ATF1_noAra +
-         EPI300_pCC1_ATF1_iAAL) /
-      (total_noAra + total_iAAL),
+      (EPI300_pCC1_ATF1_Ara +
+         EPI300_pCC1_ATF1_Ara_iAAL) /
+      (total_Ara + total_iAAL),
     
     se =
       sqrt(
         p_pool * (1 - p_pool) *
-          (1 / total_noAra + 1 / total_iAAL)
+          (1 / total_Ara + 1 / total_iAAL)
       ),
     
-    z = (prop_iAAL - prop_noAra) / se,
+    z = (prop_iAAL - prop_Ara) / se,
     
     log_p_one_tail =
       pnorm(-abs(z), log.p = TRUE),
@@ -93,6 +93,7 @@ df <- df %>%
 
 # Compounds that should always be labeled, regardless of significance
 forced_labels <- c(
+  "1-Butanol, 3-methyl-, acetate",
   "1-Butanol, 3-methyl-"
 )
 
@@ -179,10 +180,6 @@ p <- ggplot(df,
     seed = 42
   ) +
   
-  scale_x_continuous(
-    limits = c(-7, 7)
-  ) +
-
   scale_y_continuous(
     trans = pseudo_log_trans(base = 10),
     breaks = c(
@@ -193,7 +190,7 @@ p <- ggplot(df,
   
   labs(
     title = "EPI300 pCC1-ATF1 Volatilome Response",
-    subtitle = "(no_arabinose vs iAAI)",
+    subtitle = "(no_arabinose vs arabinose and iAAI)",
     x = expression(log[2] ~ fold ~ change),
     y = expression(-log[10] ~ p ~ value ~ "(pseudo-log scale)")
   ) +
@@ -212,4 +209,10 @@ p <- ggplot(df,
 
 print(p)
 
-ggsave("EPI300_ATF1_noAraiAAL.png",  p,  width = 10,  height = 8,  dpi = 300)
+ggsave(
+  "EPI300_pCC1_ATF1_Ara_vs_Ara_iAAL_Volcano.png",
+  p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
