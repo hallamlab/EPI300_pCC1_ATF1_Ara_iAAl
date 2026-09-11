@@ -61,13 +61,18 @@ p_cutoff  <- 1000     # -log10(p) threshold (dotted horizontal line at 1e3)
 df <- df %>%
   mutate(significant = abs(log2FC) > fc_cutoff & neglog10p_raw > p_cutoff)
 
+# Compounds that should always be labeled, regardless of significance
+forced_labels <- c("1-Butanol, 3-methyl-")
+
 # Only label a handful of the most extreme hits (by fold change, among
 # significant points) so labels stay legible instead of overlapping.
 top_labels <- df %>%
-  filter(significant) %>%
+  filter(significant, !(Compound %in% forced_labels)) %>%
   distinct(Compound, .keep_all = TRUE) %>%
   slice_max(abs(log2FC), n = 8, with_ties = FALSE) %>%
   pull(Compound)
+
+top_labels <- c(forced_labels, top_labels)
 
 df <- df %>% mutate(label = ifelse(Compound %in% top_labels, Compound, NA))
 
