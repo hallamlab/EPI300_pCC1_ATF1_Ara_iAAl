@@ -8,7 +8,7 @@ library(ggrepel)     # non-overlapping labels with leader lines
 
 # ---- 1. Load data -------------------------------------------------
 # Expects a CSV with columns: Compound, EPI300_pCC1_ATF1_noAra, EPI300_pCC1_ATF1_Ara_iAAL
-df <- read_csv("EPI300_pCC1_ATF1_noAraAraiAAlCla.csv", show_col_types = FALSE) %>%
+df <- read_csv("EPI300_pCC1_ATF1_noAraAraiAAlODCla.csv", show_col_types = FALSE) %>%
   filter(Compound != "0", !is.na(EPI300_pCC1_ATF1_noAra), !is.na(EPI300_pCC1_ATF1_Ara_iAAL))
 
 # ---- 2. Fold change -------------------------------------------------

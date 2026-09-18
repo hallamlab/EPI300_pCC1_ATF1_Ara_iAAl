@@ -1,6 +1,5 @@
 # ============================================================
-# Volcano plot: EPI300_pCC1_ATF1
-# iAAL vs noAra
+# Volcano plot: EPI300_pCC1_ATF1  (no_arabinose vs iAAL)
 # ============================================================
 
 library(tidyverse)
@@ -8,208 +7,128 @@ library(ggrepel)
 library(scales)
 
 # ---- 1. Load data ------------------------------------------------
+df <- read_csv("EPI300_pCC1_ATF1_noAraiAAlODCla.csv",
+               show_col_types = FALSE) %>%
+  select(Name, noAra = EPI300_pCC1_ATF1_noAra, iAAL = EPI300_pCC1_ATF1_iAAL) %>%
+  mutate(across(c(noAra, iAAL), ~ suppressWarnings(as.numeric(.x))))
 
-df <- read_csv("EPI300_pCC1_ATF1_noAraiAAlCla.csv",
-               show_col_types = FALSE)
-
-# Force the count columns to numeric. A stray non-numeric entry
-# (e.g. "Find by Chromatogram Deconvolution" instead of a peak area)
-# will make read_csv() import the WHOLE column as character, which
-# then breaks sum()/arithmetic below. suppressWarnings() here is
-# intentional: any cell that can't convert becomes NA, and gets
-# reported and dropped in the next step.
-df <- df %>%
-  mutate(
-    EPI300_pCC1_ATF1_noAra      = suppressWarnings(as.numeric(EPI300_pCC1_ATF1_noAra)),
-    EPI300_pCC1_ATF1_iAAL = suppressWarnings(as.numeric(EPI300_pCC1_ATF1_iAAL))
-  )
-
-dropped <- df %>%
-  filter(is.na(EPI300_pCC1_ATF1_noAra) | is.na(EPI300_pCC1_ATF1_iAAL))
-
-if (nrow(dropped) > 0) {
-  message(sprintf("Dropping %d row(s) with missing/non-numeric values:", nrow(dropped)))
-  print(dropped %>% select(Name, EPI300_pCC1_ATF1_noAra, EPI300_pCC1_ATF1_iAAL),
-        n = nrow(dropped))
-}
+n_start <- nrow(df)
 
 df <- df %>%
-  filter(
-    !is.na(EPI300_pCC1_ATF1_noAra),
-    !is.na(EPI300_pCC1_ATF1_iAAL)
-  )
+  filter(!is.na(Name), Name != "0",          # empty / placeholder names
+         !is.na(noAra), !is.na(iAAL),        # non-numeric entries
+         noAra > 0, iAAL > 0)                # keep only compounds detected in BOTH samples
 
-# ---- 2. Fold Change ---------------------------------------------
+message(sprintf("Kept %d of %d rows (removed empty, placeholder '0', and compounds detected in only one sample).",
+                nrow(df), n_start))
 
-total_noAra <- sum(df$EPI300_pCC1_ATF1_noAra)
-total_iAAL <- sum(df$EPI300_pCC1_ATF1_iAAL)
+# ---- 2. Fold change ---------------------------------------------
+total_noAra <- sum(df$noAra)
+total_iAAL  <- sum(df$iAAL)
 
 df <- df %>%
   mutate(
-    prop_noAra  = EPI300_pCC1_ATF1_noAra / total_noAra,
-    prop_iAAL = EPI300_pCC1_ATF1_iAAL / total_iAAL,
-    log2FC    = log2(prop_iAAL / prop_noAra)
+    prop_noAra = noAra / total_noAra,
+    prop_iAAL  = iAAL  / total_iAAL,
+    log2FC     = log2(prop_iAAL / prop_noAra)
   )
 
 # ---- 3. Significance --------------------------------------------
-
+# One measurement per compound per sample (no replicates), so this is
+# an exploratory two-proportion z-test, NOT a true biological p-value.
+# Computed in log-space to avoid underflow to 0.
 df <- df %>%
-  rowwise() %>%
   mutate(
-    p_pool =
-      (EPI300_pCC1_ATF1_noAra +
-         EPI300_pCC1_ATF1_iAAL) /
-      (total_noAra + total_iAAL),
-    
-    se =
-      sqrt(
-        p_pool * (1 - p_pool) *
-          (1 / total_noAra + 1 / total_iAAL)
-      ),
-    
-    z = (prop_iAAL - prop_noAra) / se,
-    
-    log_p_one_tail =
-      pnorm(-abs(z), log.p = TRUE),
-    
-    neglog10p =
-      -(log_p_one_tail + log(2)) / log(10)
-  ) %>%
-  ungroup()
-
-# ---- 4. Significance thresholds ---------------------------------
+    p_pool    = (noAra + iAAL) / (total_noAra + total_iAAL),
+    se        = sqrt(p_pool * (1 - p_pool) * (1 / total_noAra + 1 / total_iAAL)),
+    z         = (prop_iAAL - prop_noAra) / se,
+    neglog10p = -(pnorm(-abs(z), log.p = TRUE) + log(2)) / log(10)
+  )
 
 fc_cutoff <- 2
 p_cutoff  <- 1000
 
 df <- df %>%
-  mutate(
-    significant =
-      abs(log2FC) > fc_cutoff &
-      neglog10p > p_cutoff
-  )
+  mutate(significant = abs(log2FC) > fc_cutoff & neglog10p > p_cutoff,
+         direction   = case_when(significant & log2FC > 0 ~ "Higher in iAAL",
+                                 significant & log2FC < 0 ~ "Higher in no_Ara",
+                                 TRUE                     ~ "Not significant"))
 
-# ---- 5. Labels --------------------------------------------------
+# ---- 4. Labels --------------------------------------------------
+forced_labels <- c("1-Butanol, 3-methyl-")   # always label these
+n_per_side    <- 4                           # top N per direction
 
-# Compounds that should always be labeled, regardless of significance
-forced_labels <- c(
-  "1-Butanol, 3-methyl-"
-)
-
-n_per_side <- 4  # top N over-expressed + top N under-expressed
-
-# Figure out which side each forced label belongs to, from its own
-# log2FC sign (not just among the "significant" points), so it still
-# gets labeled even if it falls just short of the significance cutoff
-forced_sign <- df %>%
-  filter(Name %in% forced_labels) %>%
-  distinct(Name, .keep_all = TRUE) %>%
-  select(Name, log2FC)
-
-forced_over  <- forced_sign %>% filter(log2FC > 0) %>% pull(Name)
-forced_under <- forced_sign %>% filter(log2FC < 0) %>% pull(Name)
-
-sig_df <- df %>%
-  filter(significant) %>%
-  distinct(Name, .keep_all = TRUE)
-
-# Over-expressed (log2FC > 0): reserve slots for any forced labels on
-# this side, then fill the rest with the largest positive log2FC values
-top_over <- sig_df %>%
-  filter(log2FC > 0, !(Name %in% forced_labels)) %>%
-  slice_max(log2FC,
-            n = max(n_per_side - length(forced_over), 0),
-            with_ties = FALSE) %>%
-  pull(Name)
-
-# Under-expressed (log2FC < 0): same idea, using the most negative values
-top_under <- sig_df %>%
-  filter(log2FC < 0, !(Name %in% forced_labels)) %>%
-  slice_min(log2FC,
-            n = max(n_per_side - length(forced_under), 0),
-            with_ties = FALSE) %>%
-  pull(Name)
-
-top_labels <- c(forced_over, top_over, forced_under, top_under)
+top_over  <- df %>% filter(significant, log2FC > 0) %>%
+  slice_max(neglog10p, n = n_per_side, with_ties = FALSE) %>% pull(Name)
+top_under <- df %>% filter(significant, log2FC < 0) %>%
+  slice_max(neglog10p, n = n_per_side, with_ties = FALSE) %>% pull(Name)
 
 df <- df %>%
-  mutate(
-    label = ifelse(Name %in% top_labels,
-                   Name,
-                   NA)
-  )
+  mutate(label = if_else(Name %in% c(forced_labels, top_over, top_under),
+                         str_wrap(str_trunc(Name, 45), width = 22),
+                         NA_character_))
 
-# ---- 6. Volcano Plot --------------------------------------------
+# Labeled significant points get pushed outward, into the empty space
+# beside the plot, so text doesn't sit on top of the grey cloud.
+label_df <- df %>%
+  filter(!is.na(label)) %>%
+  mutate(nudge_x = case_when(
+    abs(log2FC) <= fc_cutoff                 ~ 0,                    # forced label near centre
+    abs(log2FC) > max(abs(log2FC)) - 1.5     ~ -sign(log2FC) * 2,    # near the edge: push inward
+    TRUE                                     ~  sign(log2FC) * 2     # otherwise push outward
+  ))
 
-p <- ggplot(df,
-            aes(x = log2FC,
-                y = neglog10p)) +
-  
-  geom_point(
-    aes(color = significant),
-    size = 2
-  ) +
-  
+# ---- 5. Axes ----------------------------------------------------
+x_lim <- 2 * ceiling((max(abs(df$log2FC)) + 1) / 2)   # symmetric, nothing clipped
+y_brk <- c(0, 10, 10^2, 10^3, 10^4, 10^5, 10^6, 10^7)
+y_brk <- y_brk[y_brk <= max(df$neglog10p) * 10]
+y_lab <- parse(text = c("0", "10", "10^2", "10^3", "10^4",
+                        "10^5", "10^6", "10^7"))[seq_along(y_brk)]
+
+# ---- 6. Plot ----------------------------------------------------
+p <- ggplot(df, aes(x = log2FC, y = neglog10p)) +
+  geom_vline(xintercept = c(-fc_cutoff, fc_cutoff), linetype = "dotted") +
+  geom_hline(yintercept = p_cutoff, linetype = "dotted") +
+  geom_point(aes(color = direction),
+             size = 2.4, alpha = 0.85) +
   scale_color_manual(
-    values = c(
-      "TRUE" = "red",
-      "FALSE" = "grey70"
-    )
+    values = c("Higher in iAAL"   = "red",
+               "Higher in no_Ara" = "blue",
+               "Not significant"  = "grey70"),
+    breaks = c("Higher in iAAL", "Higher in no_Ara")
   ) +
-  
-  geom_vline(
-    xintercept = c(-fc_cutoff, fc_cutoff),
-    linetype = "dotted"
-  ) +
-  
-  geom_hline(
-    yintercept = p_cutoff,
-    linetype = "dotted"
-  ) +
-  
   geom_text_repel(
+    data = label_df,
     aes(label = label),
-    size = 3.5,
+    nudge_x = label_df$nudge_x,
+    xlim = c(-x_lim, x_lim),       # keep labels inside the panel
+    size = 3.2, lineheight = 0.9,
     max.overlaps = Inf,
-    segment.color = "black",
-    box.padding = 0.5,
-    point.padding = 0.3,
-    min.segment.length = 0,
-    force = 2,
-    seed = 42
+    segment.color = "black", segment.size = 0.3,
+    box.padding = 0.9, point.padding = 0.5,
+    min.segment.length = 0, force = 4, seed = 42
   ) +
-  
-  scale_x_continuous(
-    limits = c(-7, 7)
-  ) +
-
-  scale_y_continuous(
-    trans = pseudo_log_trans(base = 10),
-    breaks = c(
-      0, 2, 10, 100,
-      1000, 10000, 100000
-    )
-  ) +
-  
+  scale_x_continuous(limits = c(-x_lim, x_lim),
+                     breaks = seq(-x_lim, x_lim, by = 2),
+                     expand = expansion(mult = 0.02)) +
+  scale_y_continuous(trans = pseudo_log_trans(base = 10),
+                     breaks = y_brk, labels = y_lab,
+                     expand = expansion(mult = c(0.02, 0.12))) +
   labs(
-    title = "EPI300 pCC1-ATF1 Volatilome Response",
-    subtitle = "(no_arabinose vs iAAI)",
-    x = expression(log[2] ~ fold ~ change),
-    y = expression(-log[10] ~ p ~ value ~ "(pseudo-log scale)")
+    title    = "EPI300 pCC1-ATF1 Volatilome Response",
+    subtitle = "(no_arabinose vs iAAL)",
+    x        = expression(log[2]~fold~change~"(iAAL / no_Ara)"),
+    y        = expression(-log[10]~p~value~"(pseudo-log scale)"),
+    color = NULL
   ) +
-  
   theme_bw(base_size = 14) +
-  
   theme(
-    plot.title = element_text(
-      hjust = 0.5,
-      size = 16
-    ),
-    plot.subtitle = element_text(hjust = 0.5),
+    plot.title       = element_text(hjust = 0.5, size = 16),
+    plot.subtitle    = element_text(hjust = 0.5),
     panel.grid.minor = element_blank(),
-    legend.position = "none"
+    legend.position  = "none"
   )
 
 print(p)
 
-ggsave("EPI300_ATF1_noAraiAAL.png",  p,  width = 10,  height = 8,  dpi = 300)
+ggsave("EPI300_ATF1_noAraiAAL.png", p, width = 10, height = 8, dpi = 300)

@@ -9,7 +9,7 @@ library(scales)
 
 # ---- 1. Load data ------------------------------------------------
 
-df <- read_csv("EPI300_pCC1_ATF1_AraAraiAAlCla.csv",
+df <- read_csv("EPI300_pCC1_ATF1_AraAraiAAlODCla.csv",
                show_col_types = FALSE)
 
 # Force the count columns to numeric. A stray non-numeric entry
