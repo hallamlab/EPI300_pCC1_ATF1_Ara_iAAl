@@ -1,134 +1,148 @@
 # ============================================================
-# Volcano plot: EPI300_pCC1_ATF1  (no_arabinose vs iAAL)
+# Volcano plot: EPI300_pCC1_ATF1 (noAra vs iAAl)
+# Styled to match Met_EPPCC1_EPFOS_iAA_Volcano.png
 # ============================================================
 
-library(tidyverse)
-library(ggrepel)
-library(scales)
+library(tidyverse)   # dplyr, ggplot2, readr
+library(ggrepel)     # non-overlapping labels with leader lines
 
-# ---- 1. Load data ------------------------------------------------
-df <- read_csv("EPI300_pCC1_ATF1_noAraiAAlODCla.csv",
-               show_col_types = FALSE) %>%
-  select(Name, noAra = EPI300_pCC1_ATF1_noAra, iAAL = EPI300_pCC1_ATF1_iAAL) %>%
-  mutate(across(c(noAra, iAAL), ~ suppressWarnings(as.numeric(.x))))
+# ---- 1. Load data -------------------------------------------------
+# Expects a CSV with columns: Name, EPI300_pCC1_ATF1_noAra, EPI300_pCC1_ATF1_iAAl
+df <- read_csv("EPI300_pCC1_ATF1_noAraiAAlOD.csv", show_col_types = FALSE)
 
-n_start <- nrow(df)
-
-df <- df %>%
-  filter(!is.na(Name), Name != "0",          # empty / placeholder names
-         !is.na(noAra), !is.na(iAAL),        # non-numeric entries
-         noAra > 0, iAAL > 0)                # keep only compounds detected in BOTH samples
-
-message(sprintf("Kept %d of %d rows (removed empty, placeholder '0', and compounds detected in only one sample).",
-                nrow(df), n_start))
-
-# ---- 2. Fold change ---------------------------------------------
-total_noAra <- sum(df$noAra)
-total_iAAL  <- sum(df$iAAL)
+# ---- 2. Fold change -------------------------------------------------
+# Many Names are detected in only one condition (blank cell in the CSV).
+# Dropping them (or letting NA propagate through sum()/log2()) would remove
+# points from the plot, so blanks are treated as 0 counts, and a small
+# pseudocount is added ONLY inside the fold-change ratio so log2(0) and
+# division by zero never occur. Every row in the file stays on the plot.
+pseudo <- 0.5
 
 df <- df %>%
   mutate(
-    prop_noAra = noAra / total_noAra,
-    prop_iAAL  = iAAL  / total_iAAL,
-    log2FC     = log2(prop_iAAL / prop_noAra)
+    EPI300_pCC1_ATF1_noAra = replace_na(EPI300_pCC1_ATF1_noAra, 0),
+    EPI300_pCC1_ATF1_iAAl  = replace_na(EPI300_pCC1_ATF1_iAAl,   0)
   )
 
-# ---- 3. Significance --------------------------------------------
-# One measurement per compound per sample (no replicates), so this is
-# an exploratory two-proportion z-test, NOT a true biological p-value.
-# Computed in log-space to avoid underflow to 0.
+total_noAra <- sum(df$EPI300_pCC1_ATF1_noAra)
+total_iAAl   <- sum(df$EPI300_pCC1_ATF1_iAAl)
+
 df <- df %>%
   mutate(
-    p_pool    = (noAra + iAAL) / (total_noAra + total_iAAL),
-    se        = sqrt(p_pool * (1 - p_pool) * (1 / total_noAra + 1 / total_iAAL)),
-    z         = (prop_iAAL - prop_noAra) / se,
-    neglog10p = -(pnorm(-abs(z), log.p = TRUE) + log(2)) / log(10)
+    prop_noAra = EPI300_pCC1_ATF1_noAra / total_noAra,
+    prop_iAAl   = EPI300_pCC1_ATF1_iAAl  / total_iAAl,
+    log2FC     = log2(((EPI300_pCC1_ATF1_iAAl  + pseudo) / total_iAAl) /
+                      ((EPI300_pCC1_ATF1_noAra + pseudo) / total_noAra))
   )
 
-fc_cutoff <- 2
-p_cutoff  <- 1000
+# ---- 3. Significance ------------------------------------------------
+# NOTE: this dataset has ONE measurement per Name per condition (no
+# biological replicates), so a textbook p-value isn't really available.
+# As a stand-in, this uses a two-proportion z-test of each Name's
+# share of the total signal in Ara vs noAra. Treat these p-values as a
+# rough, exploratory ranking, NOT true biological significance — with
+# replicate data, swap this block out for a proper t-test/limma/DESeq2 call.
+#
+# IMPORTANT: with counts in the hundreds of millions, pnorm() underflows
+# to exactly 0 for most points (-log10(0) = Inf). Compute in log-space
+# with log.p = TRUE instead, which stays finite and preserves ranking.
+df <- df %>%
+  rowwise() %>%
+  mutate(
+    p_pool    = (EPI300_pCC1_ATF1_noAra + EPI300_pCC1_ATF1_iAAl) / (total_noAra + total_iAAl),
+    se        = sqrt(p_pool * (1 - p_pool) * (1/total_noAra + 1/total_iAAl)),
+    z         = (prop_iAAl - prop_noAra) / se,
+    log_p_one_tail = pnorm(-abs(z), log.p = TRUE),           # natural log, one-tailed
+    neglog10p_raw  = -(log_p_one_tail + log(2)) / log(10)    # two-tailed, base-10, finite
+  ) %>%
+  ungroup()
+
+# ---- 4. Y-axis scale --------------------------------------------------
+# -log10(p) reaches into the millions (a huge-N artifact, not real
+# biological signal). Nothing is capped, clipped, or filtered: the axis is
+# a pseudo-log scale (log-like for large values, linear near zero) whose
+# breaks and limits are computed from the data, so the largest value
+# always fits inside the panel.
+df <- df %>% mutate(neglog10p = neglog10p_raw)
+
+y_max <- max(df$neglog10p, na.rm = TRUE)
+
+# Guard: if every point has neglog10p == 0 (e.g. Ara and noAra identical for
+# all Names), log10(y_max) is -Inf and 0:ceiling(-Inf) would try to build an
+# infinite vector. Fall back to a single break at 0 in that case.
+if (!is.finite(y_max) || y_max <= 0) {
+  y_breaks <- c(0)
+} else {
+  y_breaks <- c(0, 10^(0:ceiling(log10(y_max))))   # 0, 1, 10, ... past the max
+}
+y_limits <- c(0, max(y_breaks))
+
+# X-axis view fixed to -8..8. Points beyond that (mostly Names found in only
+# one condition) fall outside the visible window; they are not deleted or
+# moved, the plot is just zoomed (coord_cartesian), so no warnings appear.
+x_lim <- 6
+
+# ---- 5. Flag significant hits ---------------------------------------
+fc_cutoff <- 2       # |log2FC| threshold (dotted vertical lines at -2, 2)
+p_cutoff  <- 1000     # -log10(p) threshold (dotted horizontal line at 1e3)
 
 df <- df %>%
-  mutate(significant = abs(log2FC) > fc_cutoff & neglog10p > p_cutoff,
-         direction   = case_when(significant & log2FC > 0 ~ "Higher in iAAL",
-                                 significant & log2FC < 0 ~ "Higher in no_Ara",
-                                 TRUE                     ~ "Not significant"))
+  mutate(significant = abs(log2FC) > fc_cutoff & neglog10p_raw > p_cutoff)
 
-# ---- 4. Labels --------------------------------------------------
-forced_labels <- c("1-Butanol, 3-methyl-")   # always label these
-n_per_side    <- 4                           # top N per direction
+# Names that should always be labeled, regardless of significance
+forced_labels <- c("1-Butanol, 3-methyl-")
 
-top_over  <- df %>% filter(significant, log2FC > 0) %>%
-  slice_max(neglog10p, n = n_per_side, with_ties = FALSE) %>% pull(Name)
-top_under <- df %>% filter(significant, log2FC < 0) %>%
-  slice_max(neglog10p, n = n_per_side, with_ties = FALSE) %>% pull(Name)
+# Only label a handful of the most extreme hits (by fold change, among
+# significant points) so labels stay legible instead of overlapping.
+top_labels <- df %>%
+  filter(significant, !(Name %in% forced_labels), abs(log2FC) <= x_lim) %>%   # only label points inside the visible window
+  distinct(Name, .keep_all = TRUE) %>%
+  slice_max(abs(log2FC), n = 8, with_ties = FALSE) %>%
+  pull(Name)
 
-df <- df %>%
-  mutate(label = if_else(Name %in% c(forced_labels, top_over, top_under),
-                         str_wrap(str_trunc(Name, 45), width = 22),
-                         NA_character_))
+top_labels <- c(forced_labels, top_labels)
 
-# Labeled significant points get pushed outward, into the empty space
-# beside the plot, so text doesn't sit on top of the grey cloud.
-label_df <- df %>%
-  filter(!is.na(label)) %>%
-  mutate(nudge_x = case_when(
-    abs(log2FC) <= fc_cutoff                 ~ 0,                    # forced label near centre
-    abs(log2FC) > max(abs(log2FC)) - 1.5     ~ -sign(log2FC) * 2,    # near the edge: push inward
-    TRUE                                     ~  sign(log2FC) * 2     # otherwise push outward
-  ))
+df <- df %>% mutate(label = ifelse(Name %in% top_labels, Name, NA))
 
-# ---- 5. Axes ----------------------------------------------------
-x_lim <- 2 * ceiling((max(abs(df$log2FC)) + 1) / 2)   # symmetric, nothing clipped
-y_brk <- c(0, 10, 10^2, 10^3, 10^4, 10^5, 10^6, 10^7)
-y_brk <- y_brk[y_brk <= max(df$neglog10p) * 10]
-y_lab <- parse(text = c("0", "10", "10^2", "10^3", "10^4",
-                        "10^5", "10^6", "10^7"))[seq_along(y_brk)]
-
-# ---- 6. Plot ----------------------------------------------------
+# ---- 6. Plot ----------------------------------------------------------
 p <- ggplot(df, aes(x = log2FC, y = neglog10p)) +
+  geom_point(aes(color = significant), size = 2, show.legend = FALSE) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "grey70")) +
   geom_vline(xintercept = c(-fc_cutoff, fc_cutoff), linetype = "dotted") +
   geom_hline(yintercept = p_cutoff, linetype = "dotted") +
-  geom_point(aes(color = direction),
-             size = 2.4, alpha = 0.85) +
-  scale_color_manual(
-    values = c("Higher in iAAL"   = "red",
-               "Higher in no_Ara" = "blue",
-               "Not significant"  = "grey70"),
-    breaks = c("Higher in iAAL", "Higher in no_Ara")
-  ) +
   geom_text_repel(
-    data = label_df,
+    data = ~ filter(.x, !is.na(label)),   # only the labelled points, so no NA rows are passed
     aes(label = label),
-    nudge_x = label_df$nudge_x,
-    xlim = c(-x_lim, x_lim),       # keep labels inside the panel
-    size = 3.2, lineheight = 0.9,
+    size = 3.5,
     max.overlaps = Inf,
-    segment.color = "black", segment.size = 0.3,
-    box.padding = 0.9, point.padding = 0.5,
-    min.segment.length = 0, force = 4, seed = 42
+    segment.color = "black",
+    box.padding = 0.5,
+    point.padding = 0.3,
+    min.segment.length = 0,
+    force = 2,
+    seed = 42
   ) +
-  scale_x_continuous(limits = c(-x_lim, x_lim),
-                     breaks = seq(-x_lim, x_lim, by = 2),
-                     expand = expansion(mult = 0.02)) +
-  scale_y_continuous(trans = pseudo_log_trans(base = 10),
-                     breaks = y_brk, labels = y_lab,
-                     expand = expansion(mult = c(0.02, 0.12))) +
+  scale_y_continuous(
+    trans  = scales::pseudo_log_trans(base = 10),
+    breaks = y_breaks,
+    limits = y_limits,
+    labels = scales::label_number(scale_cut = scales::cut_short_scale()),
+    expand = expansion(mult = c(0.02, 0.05))
+  ) +
+  scale_x_continuous(breaks = seq(-x_lim, x_lim, by = 2)) +
+  coord_cartesian(xlim = c(-x_lim, x_lim)) +
   labs(
-    title    = "EPI300 pCC1-ATF1 Volatilome Response",
-    subtitle = "(no_arabinose vs iAAL)",
-    x        = expression(log[2]~fold~change~"(iAAL / no_Ara)"),
-    y        = expression(-log[10]~p~value~"(pseudo-log scale)"),
-    color = NULL
+    title = "EPI300 pCC1-ATF1 Volatilome Response\n(no_arabinose vs iAAl)",
+    x = expression(log[2]~fold~change),
+    y = expression(-log[10]~p~value~"(pseudo-log scale)")
   ) +
   theme_bw(base_size = 14) +
   theme(
-    plot.title       = element_text(hjust = 0.5, size = 16),
-    plot.subtitle    = element_text(hjust = 0.5),
+    plot.title = element_text(hjust = 0.5, size = 16),
     panel.grid.minor = element_blank(),
-    legend.position  = "none"
+    axis.title = element_text(size = 14)
   )
 
 print(p)
 
-ggsave("EPI300_ATF1_noAraiAAL.png", p, width = 10, height = 8, dpi = 300)
+ggsave("EPI300_pCC1_ATF1_noAraiAAL.png", p, width = 10, height = 8, dpi = 300)
