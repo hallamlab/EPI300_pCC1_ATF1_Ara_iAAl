@@ -161,4 +161,4 @@ p <- ggplot(df, aes(x = log2FC, y = neglog10p)) +
 
 print(p)
 
-ggsave("EPI300_ATF1_noAraAraiAAl.png", p, width = 10, height = 8, dpi = 300)
+ggsave("EPI300_pCC1_ATF1_noAraAraiAAl.png", p, width = 10, height = 8, dpi = 300)
