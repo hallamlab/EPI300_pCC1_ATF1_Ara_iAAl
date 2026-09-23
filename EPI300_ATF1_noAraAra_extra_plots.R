@@ -26,7 +26,7 @@ comparisons <- tribble(
   "noAra vs Ara",          "EPI300_pCC1_ATF1_noAraAraOD.csv",         "noAra", "Ara",
   "noAra vs iAAL",         "EPI300_pCC1_ATF1_noAraiAAlOD.csv",        "noAra", "iAAL",
   "noAra vs Ara + iAAL",   "EPI300_pCC1_ATF1_noAraAraiAAlOD.csv",     "noAra", "Ara + iAAL",
-  "Ara vs Ara + iAAL",     "EPI300_pCC1_ATF1_AraAraiAAlOD.csv",       "Ara",   "Ara + iAAL"
+  "iAAl vs Ara + iAAL",    "EPI300_pCC1_ATF1_iAAlAraiAAlOD.csv",      "iAAl",  "Ara + iAAL"
 )
 
 culture_cols <- c("noAra" = "blue", "Ara" = "red",
@@ -34,7 +34,7 @@ culture_cols <- c("noAra" = "blue", "Ara" = "red",
 
 fc_cutoff <- 2   # log2FC threshold (= 4-fold) used to call "Higher in ..."
 
-# tidy filename tag for a comparison label, e.g. "Ara vs Ara + iAAL" -> "Ara_vs_Ara_iAAL"
+# tidy filename tag for a comparison label, e.g. "iAAl vs Ara + iAAL" -> "iAAl_vs_Ara_iAAL"
 tag_of <- function(x) x %>% str_replace_all(" \\+ ", "_") %>% str_replace_all(" vs ", "_vs_")
 
 base_theme <- theme_bw(base_size = 14) +
