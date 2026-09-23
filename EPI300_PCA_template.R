@@ -38,7 +38,7 @@ comparisons <- tribble(
   "noAra vs Ara",          "EPI300_pCC1_ATF1_noAraAraOD.csv",         "noAra", "Ara",
   "noAra vs iAAL",         "EPI300_pCC1_ATF1_noAraiAAlOD.csv",        "noAra", "iAAL",
   "noAra vs Ara + iAAL",   "EPI300_pCC1_ATF1_noAraAraiAAlOD.csv",     "noAra", "Ara + iAAL",
-  "Ara vs Ara + iAAL",     "EPI300_pCC1_ATF1_AraAraiAAlOD.csv",       "Ara",   "Ara + iAAL"
+  "iAAL vs Ara + iAAL",    "EPI300_pCC1_ATF1_iAAlAraiAAlOD.csv",      "iAAL",  "Ara + iAAL"
 )
 
 # ---- 1a. Mode A: load true replicate-level file ---------------------

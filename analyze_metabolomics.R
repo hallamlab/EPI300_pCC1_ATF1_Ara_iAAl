@@ -1,7 +1,7 @@
 ## ============================================================================
 ## EPI300_pCC1_ATF1 metabolomics comparisons
 ## Heatmaps, top-abundant bar plots, and top up/down (log2FC) bar plots
-## for: noAra vs Ara, noAra vs iAAl, noAra vs Ara+iAAl, Ara vs Ara+iAAl
+## for: noAra vs Ara, noAra vs iAAl, noAra vs Ara+iAAl, iAAl vs Ara+iAAl
 ## ============================================================================
 
 ## ---- packages --------------------------------------------------------------
@@ -51,11 +51,11 @@ comparisons <- list(
     label1 = "noAra",
     label2 = "Ara+iAAl"
   ),
-  Ara_vs_AraiAAl = list(
-    file   = file.path(DATA_DIR, "EPI300_pCC1_ATF1_AraAraiAAlOD.csv"),
-    col1   = "EPI300_pCC1_ATF1_Ara",
-    col2   = "EPI300_pCC1_ATF1_AraAraiAAl",
-    label1 = "Ara",
+  iAAl_vs_AraiAAl = list(
+    file   = file.path(DATA_DIR, "EPI300_pCC1_ATF1_iAAlAraiAAlOD.csv"),
+    col1   = "EPI300_pCC1_ATF1_iAAl",
+    col2   = "EPI300_pCC1_ATF1_AraiAAl",
+    label1 = "iAAl",
     label2 = "Ara+iAAl"
   )
 )
