@@ -26,8 +26,17 @@ comparisons <- tribble(
   "noAra vs Ara",          "EPI300_pCC1_ATF1_noAraAraOD.csv",         "noAra", "Ara",
   "noAra vs iAAL",         "EPI300_pCC1_ATF1_noAraiAAlOD.csv",        "noAra", "iAAL",
   "noAra vs Ara + iAAL",   "EPI300_pCC1_ATF1_noAraAraiAAlOD.csv",     "noAra", "Ara + iAAL",
-  "iAAl vs Ara + iAAL",    "EPI300_pCC1_ATF1_iAAlAraiAAlOD.csv",      "iAAl",  "Ara + iAAL"
+  "iAAL vs Ara + iAAL",    "EPI300_pCC1_ATF1_iAAlAraiAAlOD.csv",      "iAAL",  "Ara + iAAL"
 )
+
+# Skip any comparison whose CSV isn't in the working directory (with a message),
+# so one missing file doesn't stop the others from being plotted.
+missing_files <- comparisons %>% filter(!file.exists(file))
+if (nrow(missing_files) > 0)
+  message("Skipping (file not found in ", getwd(), "): ",
+          paste(missing_files$file, collapse = ", "))
+comparisons <- comparisons %>% filter(file.exists(file))
+if (nrow(comparisons) == 0) stop("None of the input CSV files were found in ", getwd())
 
 culture_cols <- c("noAra" = "blue", "Ara" = "red",
                   "iAAL" = "darkgreen", "Ara + iAAL" = "purple")
@@ -35,6 +44,11 @@ culture_cols <- c("noAra" = "blue", "Ara" = "red",
 fc_cutoff <- 2   # log2FC threshold (= 4-fold) used to call "Higher in ..."
 
 # tidy filename tag for a comparison label, e.g. "iAAl vs Ara + iAAL" -> "iAAl_vs_Ara_iAAL"
+bad_names <- setdiff(c(comparisons$A, comparisons$B), names(culture_cols))
+if (length(bad_names) > 0)
+  stop("Culture name(s) not in culture_cols (check spelling/case): ",
+       paste(bad_names, collapse = ", "))
+
 tag_of <- function(x) x %>% str_replace_all(" \\+ ", "_") %>% str_replace_all(" vs ", "_vs_")
 
 base_theme <- theme_bw(base_size = 14) +
